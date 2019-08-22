@@ -1,0 +1,16 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "{4C566B36-421E-BCBF-24F8-03BD664685CA}",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "TestAction",
+			"Type": "Runtime",
+			"LoadingPhase": "Default",
+			"AdditionalDependencies": [
+				"Engine"
+			]
+		}
+	]
+}

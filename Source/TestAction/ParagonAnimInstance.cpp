@@ -115,33 +115,84 @@ namespace
 		return false;
 	}
 
+	float FindPositionFromDistanceCurve(const FFloatCurve& DistanceCurve, const float& Distance, UAnimSequenceBase* InAnimSequence)
+	{
+		const TArray<FRichCurveKey>& Keys = DistanceCurve.FloatCurve.GetConstRefOfKeys();
+
+		const int32 NumKeys = Keys.Num();
+		if (NumKeys < 2)
+		{
+			return 0.f;
+		}
+
+		// Some assumptions: 
+		// - keys have unique values, so for a given value, it maps to a single position on the timeline of the animation.
+		// - key values are sorted in increasing order.
+
+#if ENABLE_ANIM_DEBUG
+		// verify assumptions in DEBUG
+		bool bIsSortedInIncreasingOrder = true;
+		bool bHasUniqueValues = true;
+		TMap<float, float> UniquenessMap;
+		UniquenessMap.Add(Keys[0].Value, Keys[0].Time);
+		for (int32 KeyIndex = 1; KeyIndex < Keys.Num(); KeyIndex++)
+		{
+			if (UniquenessMap.Find(Keys[KeyIndex].Value) != nullptr)
+			{
+				bHasUniqueValues = false;
+			}
+
+			UniquenessMap.Add(Keys[KeyIndex].Value, Keys[KeyIndex].Time);
+
+			if (Keys[KeyIndex].Value < Keys[KeyIndex - 1].Value)
+			{
+				bIsSortedInIncreasingOrder = false;
+			}
+		}
+
+		if (!bIsSortedInIncreasingOrder || !bHasUniqueValues)
+		{
+			UE_LOG(LogAnimation, Warning, TEXT("ERROR: BAD DISTANCE CURVE: %s, bIsSortedInIncreasingOrder: %d, bHasUniqueValues: %d"),
+				*GetNameSafe(InAnimSequence), bIsSortedInIncreasingOrder, bHasUniqueValues);
+		}
+#endif
+
+		int32 first = 1;
+		int32 last = NumKeys - 1;
+		int32 count = last - first;
+
+		while (count > 0)
+		{
+			int32 step = count / 2;
+			int32 middle = first + step;
+
+			if (Distance > Keys[middle].Value)
+			{
+				first = middle + 1;
+				count -= step + 1;
+			}
+			else
+			{
+				count = step;
+			}
+		}
+
+		const FRichCurveKey& KeyA = Keys[first - 1];
+		const FRichCurveKey& KeyB = Keys[first];
+		const float Diff = KeyB.Value - KeyA.Value;
+		const float Alpha = !FMath::IsNearlyZero(Diff) ? ((Distance - KeyA.Value) / Diff) : 0.f;
+		return FMath::Lerp(KeyA.Time, KeyB.Time, Alpha);
+	}
+
 	float GetDistanceCurveTime(UAnimSequence* Sequence, float Distance)
 	{
-		FRawCurveTracks CurvesOfAnim = Sequence->GetCurveData();
-		TArray<FFloatCurve> Curves = CurvesOfAnim.FloatCurves;
+		auto& Curves = Sequence->GetCurveData().FloatCurves;
 
 		for (int i = 0; i < Curves.Num(); i++)
 		{
 			if (Curves[i].Name.DisplayName == "DistanceCurve")
 			{
-				auto& Keys = Curves[i].FloatCurve.Keys;
-				for (int j = 0; j < Keys.Num(); j++)
-				{
-					if (Keys[j].Value >= Distance)
-					{
-						float NextTime = Keys[j].Time;
-						float NextValue = Keys[j].Value;
-						float PrevValue = 0;
-						float PrevTime = 0;
-						if (j > 0)
-						{
-							PrevValue = Keys[j - 1].Value;
-							PrevTime = Keys[j - 1].Time;
-						}
-						float Lerp = (Distance - PrevValue) / (NextValue - PrevValue);
-						return PrevTime + (NextTime - PrevTime) * Lerp;
-					}
-				}
+				return FindPositionFromDistanceCurve(Curves[i], Distance, Sequence);
 			}
 		}
 

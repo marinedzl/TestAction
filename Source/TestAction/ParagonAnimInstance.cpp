@@ -149,10 +149,35 @@ namespace
 	}
 }
 
+UParagonAnimInstance::UParagonAnimInstance(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+	, YawDelta(0)
+	, InverseYawDelta(0)
+	, IsAccelerating(false)
+	, JogDistanceCurveStartTime(0)
+	, JogDistanceCurveStopTime(0)
+	, DistanceMachingLocation(FVector::ZeroVector)
+	, JogStartAnimSequence(nullptr)
+	, JogStopAnimSequence(nullptr)
+	, RotationLastTick(FRotator::ZeroRotator)
+{
+}
+
 void UParagonAnimInstance::NativeInitializeAnimation()
 {
 	//Very Important Line
 	Super::NativeInitializeAnimation();
+}
+
+void UParagonAnimInstance::NativeBeginPlay()
+{
+	APawn* Pawn = TryGetPawnOwner();
+	if (!Pawn)
+		return;
+
+	FRotator ActorRotation = Pawn->GetActorRotation();
+	RotationLastTick = ActorRotation;
+	YawDelta = 0;
 }
 
 void UParagonAnimInstance::NativeUpdateAnimation(float DeltaTimeX)
@@ -160,7 +185,7 @@ void UParagonAnimInstance::NativeUpdateAnimation(float DeltaTimeX)
 	//Very Important Line
 	Super::NativeUpdateAnimation(DeltaTimeX);
 
-	UpdateActorRotation(DeltaTimeX);
+	UpdateActorLean(DeltaTimeX);
 	UpdateDistanceMatching(DeltaTimeX);
 	EvalDistanceMatching(DeltaTimeX);
 }
@@ -243,24 +268,15 @@ void UParagonAnimInstance::EvalDistanceMatching(float DeltaTimeX)
 	}
 }
 
-void UParagonAnimInstance::UpdateActorRotation(float DeltaTimeX)
+void UParagonAnimInstance::UpdateActorLean(float DeltaTimeX)
 {
 	APawn* Pawn = TryGetPawnOwner();
 	if (!Pawn)
 		return;
 
-	// Roll Pitch Yaw
-	FRotator AimRotation = Pawn->GetBaseAimRotation();
 	FRotator ActorRotation = Pawn->GetActorRotation();
-
-	FRotator Delta = AimRotation - ActorRotation;
-	Roll = Delta.Roll;
-	Pitch = Delta.Pitch;
-	Yaw = Delta.Yaw;
-
-	// YawDelta
-	float NewYawDelta = FMath::FindDeltaAngleDegrees(ActorRotation.Yaw, RotationLastTick.Yaw);
-	YawDelta = FMath::FInterpTo(YawDelta, NewYawDelta / DeltaTimeX, DeltaTimeX, 6);
+	float Delta = FMath::FindDeltaAngleDegrees(ActorRotation.Yaw, RotationLastTick.Yaw);
+	YawDelta = FMath::FInterpTo(YawDelta, Delta / DeltaTimeX, DeltaTimeX, 6);
 	InverseYawDelta = -YawDelta;
 
 	RotationLastTick = ActorRotation;

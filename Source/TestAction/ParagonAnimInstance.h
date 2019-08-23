@@ -7,49 +7,41 @@
 UCLASS()
 class TESTACTION_API UParagonAnimInstance : public UAnimInstance
 {
-	GENERATED_BODY()
-private:
-	FRotator RotationLastTick;
+	GENERATED_UCLASS_BODY()
 
 public:
 	UPROPERTY(BlueprintReadOnly, Category = Animation)
-		float Roll = 0;
+	float YawDelta;
 
 	UPROPERTY(BlueprintReadOnly, Category = Animation)
-		float Pitch = 0;
+	float InverseYawDelta;
 
 	UPROPERTY(BlueprintReadOnly, Category = Animation)
-		float Yaw = 0;
+	bool IsAccelerating;
 
 	UPROPERTY(BlueprintReadOnly, Category = Animation)
-		float YawDelta = 0;
+	float JogDistanceCurveStartTime;
 
 	UPROPERTY(BlueprintReadOnly, Category = Animation)
-		float InverseYawDelta = 0;
-public:
-	UPROPERTY(BlueprintReadOnly, Category = Animation)
-		bool IsAccelerating = false;
+	float JogDistanceCurveStopTime;
 
 	UPROPERTY(BlueprintReadOnly, Category = Animation)
-		float JogDistanceCurveStartTime = 0;
-
-	UPROPERTY(BlueprintReadOnly, Category = Animation)
-		float JogDistanceCurveStopTime = 0;
-
-	UPROPERTY(BlueprintReadOnly, Category = Animation)
-		FVector DistanceMachingLocation;
+	FVector DistanceMachingLocation;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Animation)
-		UAnimSequence* JogStartAnimSequence = nullptr;
+	UAnimSequence* JogStartAnimSequence;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Animation)
-		UAnimSequence* JogStopAnimSequence = nullptr;
+	UAnimSequence* JogStopAnimSequence;
 public:
 	virtual void NativeInitializeAnimation() override;
+	virtual void NativeBeginPlay() override;
 	virtual void NativeUpdateAnimation(float DeltaTimeX) override;
 private:
-	void UpdateActorRotation(float DeltaTimeX);
+	void UpdateActorLean(float DeltaTimeX);
 private:
 	void UpdateDistanceMatching(float DeltaTimeX);
 	void EvalDistanceMatching(float DeltaTimeX);
+private:
+	FRotator RotationLastTick;
 };

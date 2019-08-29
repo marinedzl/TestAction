@@ -198,6 +198,17 @@ namespace
 
 		return 0;
 	}
+
+	void EvalDistanceCurveTime(float& Time, UAnimSequence* Sequence, float Distance, float DeltaTimeX)
+	{
+		float Target = GetDistanceCurveTime(Sequence, Distance);
+		if (Target > Time)
+			Time = Target;
+		else
+			Time += DeltaTimeX;
+
+		Time = FMath::Min(Time, Sequence->GetPlayLength());
+	}
 }
 
 UParagonAnimInstance::UParagonAnimInstance(const FObjectInitializer& ObjectInitializer)
@@ -290,33 +301,14 @@ void UParagonAnimInstance::EvalDistanceMatching(float DeltaTimeX)
 	if (!Pawn)
 		return;
 
-	if (!JogStartAnimSequence || !JogStopAnimSequence)
-		return;
-
 	FVector Location = Pawn->GetActorLocation();
 	float Distance = FVector::DistXY(Location, DistanceMachingLocation);
-	float Time = 0;
-	float* Target = nullptr;
 
-	if (IsAccelerating)
-	{
-		Time = GetDistanceCurveTime(JogStartAnimSequence, Distance);
-		Target = &JogDistanceCurveStartTime;
-	}
-	else
-	{
-		Time = GetDistanceCurveTime(JogStopAnimSequence, -Distance);
-		Target = &JogDistanceCurveStopTime;
-	}
+	if (JogStartAnimSequence)
+		EvalDistanceCurveTime(JogDistanceCurveStartTime, JogStartAnimSequence, Distance, DeltaTimeX);
 
-	if (Time > *Target)
-	{
-		*Target = Time;
-	}
-	else
-	{
-		*Target += DeltaTimeX;
-	}
+	if (JogStopAnimSequence)
+		EvalDistanceCurveTime(JogDistanceCurveStopTime, JogStopAnimSequence, -Distance, DeltaTimeX);
 }
 
 void UParagonAnimInstance::UpdateActorLean(float DeltaTimeX)

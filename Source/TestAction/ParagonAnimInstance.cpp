@@ -7,6 +7,19 @@
 #pragma optimize( "", off )
 namespace
 {
+	inline FVector CalcVelocity(const FVector& Velocity, const FVector& Acceleration, float Friction, float TimeStep)
+	{
+		FVector TotalAcceleration = Acceleration;
+		TotalAcceleration.Z = 0;
+
+		// Friction affects our ability to change direction. This is only done for input acceleration, not path following.
+		const FVector AccelDir = TotalAcceleration.GetSafeNormal();
+		const float VelSize = Velocity.Size();
+		TotalAcceleration += -(Velocity - AccelDir * VelSize) * Friction;
+		// Apply acceleration
+		return Velocity + TotalAcceleration * TimeStep;
+	}
+
 	// Copy from CharacterMovementComponent
 	bool PredictStopLocation(
 		FVector& OutStopLocation,
@@ -115,6 +128,66 @@ namespace
 		return false;
 	}
 
+	bool PredictFallingLocation(
+		UCharacterMovementComponent* CharacterMovementComponent,
+		FVector& OutStopLocation,
+		const FVector& _CurrentLocation,
+		const FVector& _Velocity,
+		const FVector& Acceleration,
+		float FallingLateralFriction,
+		float Gravity,
+		const float TimeStep,
+		const int MaxSimulationIterations /*= 10*/)
+	{
+		const float MIN_TICK_TIME = 1e-6;
+		if (TimeStep < MIN_TICK_TIME)
+		{
+			return false;
+		}
+
+		FVector Velocity = _Velocity;
+		FVector LastLocation = _CurrentLocation;
+
+		int Iterations = 0;
+		while (Iterations < MaxSimulationIterations)
+		{
+			Iterations++;
+
+			FVector OldVelocity = Velocity;
+
+			// Apply input
+			{
+				Velocity.Z = 0.f;
+				Velocity = CalcVelocity(Velocity, Acceleration, FallingLateralFriction, TimeStep);
+				Velocity.Z = OldVelocity.Z;
+			}
+
+			// Apply gravity
+			{
+				const FVector Gravity(0.f, 0.f, Gravity);
+				float GravityTime = TimeStep;
+				Velocity += Gravity * GravityTime;
+			}
+
+			LastLocation += Velocity * TimeStep;
+
+			const FVector PawnLocation = LastLocation;
+			FFindFloorResult FloorResult;
+			CharacterMovementComponent->FindFloor(PawnLocation, FloorResult, false);
+			if (FloorResult.IsWalkableFloor())
+			{
+				FVector TestLocation = FloorResult.HitResult.ImpactPoint;
+				FNavLocation NavLocation;
+				CharacterMovementComponent->FindNavFloor(TestLocation, NavLocation);
+				OutStopLocation = NavLocation;
+				OutStopLocation += FVector(0, 0, CharacterMovementComponent->UpdatedComponent->Bounds.BoxExtent.Z);
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	float FindPositionFromDistanceCurve(const FFloatCurve& DistanceCurve, const float& Distance, UAnimSequenceBase* InAnimSequence)
 	{
 		const TArray<FRichCurveKey>& Keys = DistanceCurve.FloatCurve.GetConstRefOfKeys();
@@ -215,7 +288,10 @@ UParagonAnimInstance::UParagonAnimInstance(const FObjectInitializer& ObjectIniti
 	: Super(ObjectInitializer)
 	, YawDelta(0)
 	, InverseYawDelta(0)
+	, IsMoving(false)
 	, IsAccelerating(false)
+	, IsFalling(false)
+	, IsLanding(false)
 	, JogDistanceCurveStartTime(0)
 	, JogDistanceCurveStopTime(0)
 	, DistanceMachingLocation(FVector::ZeroVector)
@@ -266,32 +342,75 @@ void UParagonAnimInstance::UpdateDistanceMatching(float DeltaTimeX)
 	if (!ensure(CharacterMovement))
 		return;
 
-	FVector CurrentAcceleration = CharacterMovement->GetCurrentAcceleration();
-	bool IsAcceleratingNow = FVector::DistSquaredXY(CurrentAcceleration, FVector::ZeroVector) > 0;
-	if (IsAcceleratingNow == IsAccelerating)
-		return;
+	bool IsFallingNow = CharacterMovement->IsFalling();
 
-	IsAccelerating = IsAcceleratingNow;
-
-	if (IsAccelerating)
+	if (IsFalling != IsFallingNow)
 	{
-		JogDistanceCurveStartTime = 0;
-		DistanceMachingLocation = Pawn->GetActorLocation();
+		IsFalling = IsFallingNow;
+		if (!IsFalling)
+		{
+			IsAccelerating = true;
+		}
+	}
+
+	if (IsFallingNow)
+	{
+		FVector CurrentAcceleration = CharacterMovement->GetCurrentAcceleration();
+		bool IsAcceleratingNow = CharacterMovement->Velocity.Z > 0;
+		if (IsAcceleratingNow != IsAccelerating)
+		{
+			IsAccelerating = IsAcceleratingNow;
+
+			if (IsAccelerating)
+			{
+				JogDistanceCurveStartTime = 0;
+				DistanceMachingLocation = Pawn->GetActorLocation();
+			}
+			else
+			{
+				JogDistanceCurveStopTime = 0;
+
+				PredictFallingLocation(
+					CharacterMovement,
+					DistanceMachingLocation,
+					Pawn->GetActorLocation(),
+					CharacterMovement->Velocity,
+					CurrentAcceleration,
+					CharacterMovement->FallingLateralFriction,
+					CharacterMovement->GetGravityZ(),
+					CharacterMovement->MaxSimulationTimeStep,
+					100);
+			}
+		}
 	}
 	else
 	{
-		JogDistanceCurveStopTime = 0;
+		FVector CurrentAcceleration = CharacterMovement->GetCurrentAcceleration();
+		bool IsAcceleratingNow = FVector::DistSquared(CurrentAcceleration, FVector::ZeroVector) > 0;
+		if (IsAcceleratingNow != IsAccelerating)
+		{
+			IsAccelerating = IsAcceleratingNow;
 
-		//TODO : check failed
-		PredictStopLocation(
-			DistanceMachingLocation,
-			Pawn->GetActorLocation(),
-			CharacterMovement->Velocity,
-			CurrentAcceleration,
-			CharacterMovement->BrakingFriction,
-			CharacterMovement->GetMaxBrakingDeceleration(),
-			CharacterMovement->MaxSimulationTimeStep,
-			100);
+			if (IsAccelerating)
+			{
+				JogDistanceCurveStartTime = 0;
+				DistanceMachingLocation = Pawn->GetActorLocation();
+			}
+			else
+			{
+				JogDistanceCurveStopTime = 0;
+
+				PredictStopLocation(
+					DistanceMachingLocation,
+					Pawn->GetActorLocation(),
+					CharacterMovement->Velocity,
+					CurrentAcceleration,
+					CharacterMovement->BrakingFriction,
+					CharacterMovement->GetMaxBrakingDeceleration(),
+					CharacterMovement->MaxSimulationTimeStep,
+					100);
+			}
+		}
 	}
 }
 
@@ -300,15 +419,46 @@ void UParagonAnimInstance::EvalDistanceMatching(float DeltaTimeX)
 	APawn* Pawn = TryGetPawnOwner();
 	if (!Pawn)
 		return;
+	
+	IsMoving = FVector::Dist(Pawn->GetVelocity(), FVector::ZeroVector) > 0;
 
 	FVector Location = Pawn->GetActorLocation();
-	float Distance = FVector::DistXY(Location, DistanceMachingLocation);
+	float Distance = FVector::Dist(Location, DistanceMachingLocation);
 
-	if (JogStartAnimSequence)
-		EvalDistanceCurveTime(JogDistanceCurveStartTime, JogStartAnimSequence, Distance, DeltaTimeX);
+	if (IsFalling)
+	{
+		ACharacter* Character = Cast<ACharacter>(Pawn);
+		UCharacterMovementComponent* CharacterMovement = Character->GetCharacterMovement();
+		FVector Location = Pawn->GetActorLocation();
+		float Distance = FVector::Dist(Location, DistanceMachingLocation);
+		IsLanding = Distance < 80 && CharacterMovement->Velocity.Z > 0;
 
-	if (JogStopAnimSequence)
-		EvalDistanceCurveTime(JogDistanceCurveStopTime, JogStopAnimSequence, -Distance, DeltaTimeX);
+		if (!IsLanding)
+		{
+			if (JumpStartAnimSequence)
+				EvalDistanceCurveTime(JogDistanceCurveStartTime, JumpStartAnimSequence, Distance, DeltaTimeX);
+		}
+		else
+		{
+			if (JumpStopAnimSequence)
+				EvalDistanceCurveTime(JogDistanceCurveStopTime, JumpStopAnimSequence, -Distance, DeltaTimeX);
+		}
+	}
+	else
+	{
+		IsLanding = true;
+
+		if (IsAccelerating)
+		{
+			if (JogStartAnimSequence)
+				EvalDistanceCurveTime(JogDistanceCurveStartTime, JogStartAnimSequence, Distance, DeltaTimeX);
+		}
+		else
+		{
+			if (JogStopAnimSequence)
+				EvalDistanceCurveTime(JogDistanceCurveStopTime, JogStopAnimSequence, -Distance, DeltaTimeX);
+		}
+	}
 }
 
 void UParagonAnimInstance::UpdateActorLean(float DeltaTimeX)

@@ -17,7 +17,16 @@ public:
 	float InverseYawDelta;
 
 	UPROPERTY(BlueprintReadOnly, Category = Animation)
+	bool IsMoving;
+
+	UPROPERTY(BlueprintReadOnly, Category = Animation)
 	bool IsAccelerating;
+
+	UPROPERTY(BlueprintReadOnly, Category = Animation)
+	bool IsFalling;
+
+	UPROPERTY(BlueprintReadOnly, Category = Animation)
+	bool IsLanding;
 
 	UPROPERTY(BlueprintReadOnly, Category = Animation)
 	float JogDistanceCurveStartTime;
@@ -33,6 +42,12 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Animation)
 	UAnimSequence* JogStopAnimSequence;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Animation)
+	UAnimSequence* JumpStartAnimSequence;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Animation)
+	UAnimSequence* JumpStopAnimSequence;
 public:
 	virtual void NativeInitializeAnimation() override;
 	virtual void NativeBeginPlay() override;

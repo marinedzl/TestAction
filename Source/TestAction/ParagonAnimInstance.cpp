@@ -164,9 +164,8 @@ namespace
 
 			// Apply gravity
 			{
-				const FVector Gravity(0.f, 0.f, Gravity);
 				float GravityTime = TimeStep;
-				Velocity += Gravity * GravityTime;
+				Velocity += FVector(0.f, 0.f, Gravity) * GravityTime;
 			}
 
 			LastLocation += Velocity * TimeStep;

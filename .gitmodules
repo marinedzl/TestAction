@@ -1,0 +1,3 @@
+[submodule "Plugins/ParagonAnimation"]
+	path = Plugins/ParagonAnimation
+	url = https://github.com/marinedzl/ParagonAnimation.git

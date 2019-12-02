@@ -1,3 +1,6 @@
 [submodule "Plugins/ParagonAnimation"]
 	path = Plugins/ParagonAnimation
 	url = https://github.com/marinedzl/ParagonAnimation.git
+[submodule "Plugins/CustomSkeletalMeshMerge"]
+	path = Plugins/CustomSkeletalMeshMerge
+	url = https://github.com/marinedzl/CustomSkeletalMeshMerge.git

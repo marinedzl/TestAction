@@ -4,3 +4,6 @@
 [submodule "Plugins/CustomSkeletalMeshMerge"]
 	path = Plugins/CustomSkeletalMeshMerge
 	url = https://github.com/marinedzl/CustomSkeletalMeshMerge.git
+[submodule "Plugins/SkinnedInstancing"]
+	path = Plugins/SkinnedInstancing
+	url = https://github.com/marinedzl/SkinnedInstancing.git
